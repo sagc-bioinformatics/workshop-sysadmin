@@ -1,6 +1,17 @@
-# Template VM Setup
+Setting up VMs for use in a training workshop is achieved by:
 
-SSH to the VM and grab this git repository:
+ 1. Create a "template VM" containing the workshop software and data
+ 2. Image the template VM
+ 3. Instantiate a "test VM" from the image
+   1. Set up test user
+   2. Test workshop content
+ 5. Instantiate multiple workshop VMs from the image
+   1. Setup workshop users
+
+# Create Template VM
+
+Create a vanilla Ubuntu VM in the cloud (e.g. AWS, GCP, etc).
+SSH into it and clone this repository:
 
 ```bash
 ssh -J hpc.sahmri.com 34.116.110.196
@@ -9,6 +20,8 @@ git clone https://github.com/sagc-bioinformatics/workshop-sysadmin.git
 ```
 
 ## Install Generic Software
+
+We'll install some really useful tools and configuration options:
 
 ```bash
 sudo apt update
@@ -21,9 +34,6 @@ sudo apt install -y \
   htop \
   screen
 
-sudo apt install \
-  python3-pip
-
 sudo su -
 
 #####
@@ -34,17 +44,16 @@ dpkg-reconfigure tzdata
 #####
 # Setup conda
 #####
-conda_prefix='/opt/miniconda3'
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
 
 # Install to /opt/miniconda3
 bash ./Miniconda3-latest-Linux-x86_64.sh \
   -b \
-  -p "${conda_prefix}"
-source "${conda_prefix}/etc/profile.d/conda.sh"
+  -p /opt/miniconda3
+source /opt/miniconda3/etc/profile.d/conda.sh
 
 #####
-# Add conda initialisation to /etc/skel/.bashrc
+# Add conda initialisation for new users
 #####
 cat .bashrc >>/etc/skel/.bashrc
 
@@ -54,7 +63,11 @@ cat .bashrc >>/etc/skel/.bashrc
 cat .screenrc >>/etc/skel/.screenrc
 ```
 
-## Install WGBS Software
+## Workshop Specific Setup
+
+### WGBS Workshop
+
+Software:
 
 ```bash
 #####
@@ -69,10 +82,14 @@ conda install mamba -n base -c conda-forge -y
 mamba env create -f /data/envs/wgbs.yaml
 # If need to update the environment
 #mamba env update --name agrigenomics --file /data/envs/wgbs.yaml
+
+sudo apt install \
+  python3-pip
 pip3 install cpgtools
 ```
 
-## Download Data Set
+Put workshop data on the VM.
+This assumes the data has already been generated somehow and is simply available to download from a public source.
 
 ```bash
 #####
@@ -81,24 +98,4 @@ pip3 install cpgtools
 curl https://cloudstor.aarnet.edu.au/plus/s/XXXXXXXXXXXXXXX/download \
   > wgbs.tar
 tar -C / -xf wgbs.tar && rm wgbs.tar
-```
-
-# Generate Data Set
-
-```bash
-conda activate wgbs
-mkdir -p /data/wgbs/
-
-# Do stuff and put the data in /data/wgbs/
-```
-
-## Package Data Set
-
-Package the data set and upload to CloudStor
-
-```bash
-tar -c -f wgbs.tar /data/wgbs
-
-# cleanup
-#rm -f *.fastq.gz *.tsv
 ```
