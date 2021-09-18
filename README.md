@@ -46,35 +46,12 @@ source "${conda_prefix}/etc/profile.d/conda.sh"
 #####
 # Add conda initialisation to /etc/skel/.bashrc
 #####
-cat >>/etc/skel/.bashrc <<'EOF'
-# >>> conda initialize >>>
-# !! Contents within this block are managed by 'conda init' !!
-__conda_setup="$('/opt/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/opt/miniconda3/etc/profile.d/conda.sh" ]; then
-        . "/opt/miniconda3/etc/profile.d/conda.sh"
-    else
-        export PATH="/opt/miniconda3/bin:$PATH"
-    fi
-fi
-unset __conda_setup
-# <<< conda initialize <<<
-EOF
+cat .bashrc >>/etc/skel/.bashrc
 
 #####
 # Setup screenrc for new users
 #####
-cat >>/etc/skel/.screenrc <<'EOF'
-startup_message off
-caption string "%?%F%{= Bk}%? %C%A %D %d-%m-%Y %{= kB} %t%= %?%F%{= Bk}%:%{= wk}%? %n "
-hardstatus alwayslastline
-hardstatus string '%{= kG}[ %{G}%H %{g}][%= %{= kw}%?%-Lw%?%{r}(%{W}%n*%f%t%?(%u)%?%{r})%{w}%?%+Lw%?%?%= %{g}][%{R} %d/%m %{W}%c %{g}]'
-altscreen on
-# Let screen spawn its shell as the user's login shell. This will then also parse /etc/profile /etc/profile.d and ~/.profile
-shell -$SHELL
-EOF
+cat .screenrc >>/etc/skel/.screenrc
 ```
 
 ## Install WGBS Software
@@ -85,21 +62,7 @@ EOF
 #####
 mkdir -p /data/envs
 
-cat >/data/envs/wgbs.yaml <<'EOF'
-name: wgbs
-channels:
-  - bioconda
-  - conda-forge
-  - defaults
-dependencies:
-  - fastqc=0.11.9
-  - multiqc=1.11
-  - bismark=0.23.1
-  - samtools=1.11
-  - trim-galore=0.6.7
-  - bedtools=2.30.0
-  - MethylDackel=0.6.0
-EOF
+cp wgbs.yaml /data/envs/wgbs.yaml
 
 # Install environments
 conda install mamba -n base -c conda-forge -y
