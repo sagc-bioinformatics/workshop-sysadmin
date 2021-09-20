@@ -11,3 +11,4 @@ dependencies:
   - trim-galore=0.6.7
   - bedtools=2.30.0
   - MethylDackel=0.6.0
+  - r-base=4.1.1
