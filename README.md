@@ -83,7 +83,7 @@ mamba env create -f /data/envs/wgbs.yaml
 # If need to update the environment
 #mamba env update --name agrigenomics --file /data/envs/wgbs.yaml
 
-sudo apt install \
+sudo apt install -y \
   python3-pip
 pip3 install cpgtools
 ```
