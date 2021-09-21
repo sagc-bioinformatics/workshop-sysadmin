@@ -100,6 +100,35 @@ curl https://cloudstor.aarnet.edu.au/plus/s/HBCVy6IKjVTJYq7/download \
 tar -C / -xf wgbs.tar && rm wgbs.tar
 ```
 
+# Publishing Workshop Data to CloudStor
+
+While creating/testing the workshop content, it is advantagous to push the workshop data to a publically accessible location.
+We can then use this during VM instantiation by pulling that data to each new VM.
+The easiest way to achieve this is to create a tar archive and push it to CloudStor:
+
+```bash
+cd /data
+sudo tar -cf wgbs.tar wgbs
+
+sudo apt install rclone
+
+# Set this variable to the App password you generated in the above steps
+USERNAME='my_cloudstor_username'
+APP_PASSWORD='MY_CLOUDSTOR_APP_PASSWORD'
+
+# Now create the rclone configuration
+rclone config create \
+  SAGC_CloudStor \
+  webdav \
+  url https://cloudstor.aarnet.edu.au/plus/remote.php/webdav/ \
+  vendor owncloud \
+  user "${USERNAME}" \
+  pass "${APP_PASSWORD}" \
+  --obscure
+
+rclone copy wgbs.tar SAGC_CloudStor:Shared/workshops/
+```
+
 # Managing User Accounts on Instantiated VMs
 
 The image generated from the template VM doesn't have any active user accounts.
@@ -221,4 +250,121 @@ sudo ./trainusers.sh \
 # Delete all default user accounts
 sudo ./trainusers.sh \
   -a delete
+```
+
+# Instantiating and Managing a Suite of VMs
+
+If you have to instantiate and manage a suite of VMs for a hands-on session, doing things 1-by-1 can get very annoying and be error prone.
+Instead, we will use an API for instansiating VM and performing actions on them.
+Below, I should how this can achieved using simple for loops.
+However, you need to be aware of any API rate limits which will slow you down and use some form of "backoff" (preferrably exponential) to slow/limit retry attempts.
+
+## Instantiate VMs on Google Cloud Platform (GCP)
+
+### Setup Google Cloud SDK
+
+Source: https://cloud.google.com/sdk/docs/install#deb
+
+```bash
+echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
+sudo apt-get install apt-transport-https ca-certificates gnupg
+curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
+sudo apt-get update && sudo apt-get install google-cloud-sdk
+
+gcloud init
+```
+
+### Create Trainee VMs from an Existing Machine Image
+
+The following code will:
+
+ 1. generate VM's called `wgbs-001` through to `wgbs-025`
+ 2. Pull the wgbs workshop data from a public CloudStore link
+ 3. Update the [workshop-sysadmin](https://github.com/sagc-bioinformatics/workshop-sysadmin) repo on the VM
+ 4. Create a single user account `sagc001` on the VM
+
+It is worth noting, that after the VM's are instantiated, SSH access using passwords is NOT enabled.
+Similarly, the user account is also locked.
+Just prior to the start of the workshop, you would need to enable SSH login using passwords AND unlock the relevant user account(s) so trainees can log into the VMs.
+
+```bash
+machine_image_name='wgbs'
+ZERO_PADDING_LENGTH=3
+START=1
+END=25
+
+for i in $(seq --format "%0${ZERO_PADDING_LENGTH}g" ${START} ${END}); do
+  echo "## Creating VM"
+  # Try creating VM up to 5 times with 2 mins between retries
+  #   We should exponentially backoff instead
+  n=0
+  until [ "$n" -ge 5 ]; do
+    gcloud beta compute instances create "wgbs-${i}" --source-machine-image "${machine_image_name}" && break
+    n=$((n+1))
+    sleep 120
+  done
+
+  # Wait for VM to come up before trying to SSH into it
+  echo "## Waiting for VM to come up"
+  sleep 60
+
+  # Pull the workshop data and extract it
+  echo "## Pulling data"
+  gcloud compute ssh wgbs-${i} -- 'sudo wget --continue -O /data/wgbs.tar https://cloudstor.aarnet.edu.au/plus/s/HBCVy6IKjVTJYq7/download && cd /data && sudo tar -xf /data/wgbs.tar && sudo rm -f /data/wgbs.tar'
+
+  # Update the workshop-sysadmin repo code
+  gcloud compute ssh root@wgbs-${i} -- 'cd /root/workshop-sysadmin && git pull && source /opt/miniconda3/etc/profile.d/conda.sh && mamba env update --name wgbs --file /root/workshop-sysadmin/wgbs.yaml'
+  
+  # Setup user accounts
+  echo "## Creating Users"
+  gcloud compute ssh wgbs-${i} -- 'sudo /root/workshop-sysadmin/trainusers.sh -a create -s 1 -e 1'
+
+  # To help prevent exceeding API rate limit
+  #   We should exponentially backoff instead
+  echo "## sleeping"
+  sleep 300
+done
+```
+
+Once VM's are instantiated and user accounts created, extract that login information.
+This info will need to be printed along with VM IP addresses for use in the workshop.
+
+```bash
+for i in $(seq --format "%0${ZERO_PADDING_LENGTH}g" ${START} ${END}); do
+  gcloud compute ssh wgbs-${i} -- "sudo sed 's/^/'\$(hostname)'\t/' /root/userlist.txt"
+done \
+> wgbs_login.tsv
+```
+
+## Enable Trainee Access
+
+Trainee's will NOT be able to access the VM until, SSH login with passwords is enabled and the relevant user accounts unlocked.
+Do both actions:
+
+```bash
+for i in $(seq --format "%0${ZERO_PADDING_LENGTH}g" ${START} ${END}); do
+  gcloud compute ssh wgbs-${i} -- 'sudo /root/workshop-sysadmin/trainusers.sh -a pwon && sudo /root/workshop-sysadmin/trainusers.sh -a unlock -s 1 -e 1'
+done
+```
+
+## Disable Trainee Access
+
+Following the workshop, you probably want to disable trainee access to the VMs.
+Lock the relevant user account(s) and disable SSH logins using passwords:
+
+```bash
+for i in $(seq --format "%0${ZERO_PADDING_LENGTH}g" ${START} ${END}); do
+  gcloud compute ssh wgbs-${i} -- 'sudo /root/workshop-sysadmin/trainusers.sh -a lock -s 1 -e 1 && sudo /root/workshop-sysadmin/trainusers.sh -a pwoff'
+done
+```
+
+# TODO
+
+The above loops for instantiating VMs is slow since there is an API rate limit which prevents more rapid creation of VMs with this approach.
+Instead, we should aim to use instance templates and create a group of managed VMs: https://stackoverflow.com/a/51978768/1413849
+ 
+```bash
+gcloud compute instances bulk create \
+  --name-pattern="wgbs-#" \
+  --count=25
 ```
