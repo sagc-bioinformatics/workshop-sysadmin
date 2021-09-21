@@ -95,7 +95,7 @@ This assumes the data has already been generated somehow and is simply available
 #####
 # Download from CloudStor
 #####
-curl https://cloudstor.aarnet.edu.au/plus/s/XXXXXXXXXXXXXXX/download \
+curl https://cloudstor.aarnet.edu.au/plus/s/HBCVy6IKjVTJYq7/download \
   > wgbs.tar
 tar -C / -xf wgbs.tar && rm wgbs.tar
 ```
