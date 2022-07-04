@@ -4,13 +4,14 @@
 # Set default command line options
 #####
 USERNAME_PREFIX=sagc
+USERLIST_FILE='/root/userlist.txt'
 USERNAME_SUFFIX_START=1
 USERNAME_SUFFIX_END=10
 USERNAME_SUFFIX_ZERO_PADDING_LENGTH=3
 PASSWORD_LENGTH=12
 
 
-usage="USAGE: $(basename $0) [-h] -a <action> [-u <user_prefix>] [-s <start>] [-e <end>] [-z <zero_padding>] [-l <length_of_password>] [[-p <pwgen_arg>] ...]
+usage="USAGE: $(basename $0) [-h] -a <action> [-f <userlist_file>] [-u <user_prefix>] [-s <start>] [-e <end>] [-z <zero_padding>] [-l <length_of_password>] [[-p <pwgen_arg>] ...]
 
 User/password creation/management.
   where:
@@ -23,6 +24,7 @@ User/password creation/management.
       pwon:   allow password authentication in SSH
       pwoff:  disable password authentication in SSH
       delete: delete user accounts
+    -f File of colon-separated usernames and passwords (default: ${USERLIST_FILE})
     -u Username prefix (default: ${USERNAME_PREFIX})
     -s Username suffix start number (default: ${USERNAME_SUFFIX_START})
     -e Username suffix end number (default: ${USERNAME_SUFFIX_END})
@@ -35,12 +37,14 @@ PWGEN_ARGS=()
 #####
 # Parse command line options
 #####
-while getopts ":ha:u:s:e:z:l:p:" opt; do
+while getopts ":ha:f:u:s:e:z:l:p:" opt; do
   case $opt in
     h) >&2 echo "${usage}"
        exit
        ;;
     a) ACTION=${OPTARG}
+       ;;
+    f) USERLIST_FILE=${OPTARG}
        ;;
     u) USERNAME_PREFIX=${OPTARG}
        ;;
@@ -48,7 +52,7 @@ while getopts ":ha:u:s:e:z:l:p:" opt; do
        ;;
     e) USERNAME_SUFFIX_END=${OPTARG}
        ;;
-    z) SERNAME_SUFFIX_ZERO_PADDING_LENGTH=${OPTARG}
+    z) USERNAME_SUFFIX_ZERO_PADDING_LENGTH=${OPTARG}
        ;;
     l) PASSWORD_LENGTH=${OPTARG}
        ;;
@@ -93,25 +97,32 @@ fi
 
 case $ACTION in
   create)
-    touch /root/userlist.txt
-    chmod 600 /root/userlist.txt
+    if [[ -e ${USERLIST_FILE} ]]; then
+      while IFS=':' read username password; do
+        useradd --create-home --home-dir /home/${username} --shell /bin/bash ${username}
+	echo "${username}:${password}" | chpasswd
+      done < ${USERLIST_FILE}
+    else
+      touch ${USERLIST_FILE}
+      chmod 600 ${USERLIST_FILE}
 
-    for i in $(seq --format "%0${USERNAME_SUFFIX_ZERO_PADDING_LENGTH}g" ${USERNAME_SUFFIX_START} ${USERNAME_SUFFIX_END})
-    do
-      PASS=$(pwgen ${PASSWORD_LENGTH} ${PWGEN_ARGS[@]} 1)
-      useradd --create-home --home-dir /home/${USERNAME_PREFIX}${i} --shell /bin/bash ${USERNAME_PREFIX}${i}
-      echo "${USERNAME_PREFIX}${i}:${PASS}" | tee -a /root/userlist.txt | chpasswd
-    done
+      for i in $(seq --format "%0${USERNAME_SUFFIX_ZERO_PADDING_LENGTH}g" ${USERNAME_SUFFIX_START} ${USERNAME_SUFFIX_END})
+      do
+        PASS=$(pwgen ${PASSWORD_LENGTH} ${PWGEN_ARGS[@]} 1)
+        useradd --create-home --home-dir /home/${USERNAME_PREFIX}${i} --shell /bin/bash ${USERNAME_PREFIX}${i}
+        echo "${USERNAME_PREFIX}${i}:${PASS}" | tee -a ${USERLIST_FILE} | chpasswd
+      done
+    fi
   ;;
   chpass)
-    touch /root/userlist.txt
-    chmod 600 /root/userlist.txt
+    touch ${USERLIST_FILE}
+    chmod 600 ${USERLIST_FILE}
 
     for i in $(seq --format "%0${USERNAME_SUFFIX_ZERO_PADDING_LENGTH}g" ${USERNAME_SUFFIX_START} ${USERNAME_SUFFIX_END})
     do
       PASS=$(pwgen ${PASSWORD_LENGTH} ${PWGEN_ARGS[@]} 1)
-      sed -i "/${USERNAME_PREFIX}${i}/d" /root/userlist.txt
-      echo "${USERNAME_PREFIX}${i}:${PASS}" | tee -a /root/userlist.txt | chpasswd
+      sed -i "/${USERNAME_PREFIX}${i}/d" ${USERLIST_FILE}
+      echo "${USERNAME_PREFIX}${i}:${PASS}" | tee -a ${USERLIST_FILE} | chpasswd
     done
   ;;
   lock)
@@ -138,7 +149,7 @@ case $ACTION in
     for i in $(seq --format "%0${USERNAME_SUFFIX_ZERO_PADDING_LENGTH}g" ${USERNAME_SUFFIX_START} ${USERNAME_SUFFIX_END})
     do
       userdel --remove ${USERNAME_PREFIX}${i}
-      sed -i "/${USERNAME_PREFIX}${i}/d" /root/userlist.txt
+      sed -i "/${USERNAME_PREFIX}${i}/d" ${USERLIST_FILE}
       echo "${USERNAME_PREFIX}${i}: deleted"
     done
   ;;
